@@ -250,7 +250,21 @@ export default function AdminOrders() {
                     </div>
                     <p className="text-sm text-gray-600">Customer: <span className="font-medium">{payment.user?.name}</span></p>
                     <p className="text-sm text-gray-600">Phone: <span className="font-medium">{payment.user?.phone}</span></p>
-                    <p className="text-xs text-gray-500 mt-1">Claimed paid at: {new Date(payment.userClaimedAt).toLocaleString('en-IN')}</p>
+                    
+                    {/* Proof Details Added */}
+                    <div className="bg-white border text-sm border-gray-200 mt-3 p-3 rounded-xl shadow-sm">
+                      <p className="text-gray-800 font-semibold">
+                        UTR: <span className="font-mono text-green-700 bg-green-50 px-2 py-0.5 rounded">{payment.utr || 'Not provided'}</span>
+                      </p>
+                      {payment.referenceNumber && <p className="text-xs text-gray-600 mt-1 mt-1">Ref: {payment.referenceNumber}</p>}
+                      {payment.screenshot && (
+                        <a href={payment.screenshot} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 font-semibold hover:underline mt-2 inline-flex items-center gap-1">
+                          View Payment Screenshot ↗
+                        </a>
+                      )}
+                    </div>
+                    
+                    <p className="text-[10px] text-gray-500 mt-2">Claimed paid at: {new Date(payment.userClaimedAt).toLocaleString('en-IN')}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-3xl font-bold text-green-600">₹{payment.amount}</p>

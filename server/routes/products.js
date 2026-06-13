@@ -10,7 +10,11 @@ router.get('/', async (req, res) => {
     const filter = { isAvailable: true };
 
     if (category) filter.category = category;
-    if (search) filter.name = { $regex: search, $options: 'i' };
+    if (search) {
+      // Escape special regex characters to prevent ReDoS attacks
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.name = { $regex: escapedSearch, $options: 'i' };
+    }
     if (minPrice || maxPrice) {
       filter.price = {};
       if (minPrice) filter.price.$gte = Number(minPrice);

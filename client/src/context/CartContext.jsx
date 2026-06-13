@@ -5,8 +5,14 @@ const CartContext = createContext();
 
 export function CartProvider({ children }) {
   const [items, setItems] = useState(() => {
-    const saved = localStorage.getItem('cart');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('cart');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      // If cart data is corrupted, clear it and start fresh
+      localStorage.removeItem('cart');
+      return [];
+    }
   });
 
   useEffect(() => {

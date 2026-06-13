@@ -10,6 +10,10 @@ const paymentSchema = new mongoose.Schema({
   paymentMethod: { type: String, enum: ['qr_code', 'cod'], default: 'qr_code' },
   
   // Payment status flow
+  utr: { type: String, default: null }, // Required for verifying UPI
+  referenceNumber: { type: String, default: null },
+  screenshot: { type: String, default: null }, // Base64 image
+  
   status: {
     type: String,
     enum: ['pending', 'verified_by_user', 'approved_by_admin', 'rejected_by_admin', 'completed'],

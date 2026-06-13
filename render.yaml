@@ -1,0 +1,44 @@
+services:
+  # ─── DairyOS Pro Backend (Node.js + Express) ────────────────────────────────
+  - type: web
+    name: dairyospro-server
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: MONGODB_URI
+        sync: false  # Set this in Render dashboard
+      - key: JWT_SECRET
+        sync: false  # Set this in Render dashboard
+      - key: CLIENT_URL
+        value: https://dairy-ospro.vercel.app
+      - key: OWNER_WHATSAPP
+        value: "918766997752"
+      - key: ADMIN_EMAIL
+        value: vasantdadaagency816@gmail.com
+      - key: ADMIN_PASSWORD
+        sync: false  # Set this in Render dashboard
+      - key: ADMIN_NAME
+        value: Kedar Patil
+      - key: UPI_ID
+        value: "9975882125@okbizaxis"
+    healthCheckPath: /api/health
+
+  # ─── DairyOS Pro ML Service (Python + FastAPI) ───────────────────────────────
+  - type: web
+    name: dairyospro-ml
+    runtime: python
+    rootDir: ml-model
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: PYTHON_VERSION
+        value: 3.11.0
+    healthCheckPath: /health

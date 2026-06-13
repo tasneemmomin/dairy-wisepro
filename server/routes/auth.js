@@ -5,10 +5,10 @@ const User = require('../models/User');
 const { auth, authorizeRoles } = require('../middleware/auth');
 const router = express.Router();
 
-// ─── Fixed Admin Credentials ───────────────────────────────────────────────
-const ADMIN_EMAIL    = 'vasantdadaagency816@gmail.com';
-const ADMIN_PASSWORD = 'vasantdada123';
-const ADMIN_NAME     = 'Kedar Patil';
+// ─── Fixed Admin Credentials (from env vars with hardcoded fallback) ────────
+const ADMIN_EMAIL    = process.env.ADMIN_EMAIL    || 'vasantdadaagency816@gmail.com';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'vasantdada123';
+const ADMIN_NAME     = process.env.ADMIN_NAME     || 'Kedar Patil';
 
 // ─── 1. Register (Signup) ─────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
@@ -115,11 +115,9 @@ router.post('/login', async (req, res) => {
 });
 
 // ─── 3. Get current user (/me) ─────────────────────────────────────────────
+// The auth middleware already handles both admin-fixed and regular users,
+// populating req.user correctly in both cases.
 router.get('/me', auth, async (req, res) => {
-  // Fixed admin: token has id='admin-fixed', not in DB
-  if (req.user === null || req.userIsAdmin) {
-    return res.json(req.adminUser || req.user);
-  }
   res.json(req.user);
 });
 

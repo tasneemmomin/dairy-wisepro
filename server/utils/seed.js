@@ -76,7 +76,7 @@ const dairyProducts = [
     unit: 'per liter',
     stock: 80,
     lowStockThreshold: 10,
-    image: 'https://images.unsplash.com/photo-1592aboredo?w=400&h=300&fit=crop',
+    image: 'https://images.unsplash.com/photo-1571167530149-c1105da4c2d1?w=400&h=300&fit=crop',
     isAvailable: true
   },
   {

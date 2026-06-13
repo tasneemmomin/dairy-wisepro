@@ -140,7 +140,7 @@ router.get('/:id', auth, async (req, res) => {
     if (!order) return res.status(404).json({ message: 'Order not found' });
     
     // Check if user is owner of the order or has elevated role
-    if (order.user._id.toString() !== req.user._id.toString() && !['OWNER', 'ADMIN', 'STAFF', 'DELIVERY'].includes(req.user.role)) {
+    if (order.user?._id?.toString() !== req.user._id?.toString() && !['OWNER', 'ADMIN', 'STAFF', 'DELIVERY'].includes(req.user.role)) {
        return res.status(403).json({ message: 'Unauthorized' });
     }
 

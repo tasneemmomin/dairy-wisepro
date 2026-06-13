@@ -6,8 +6,8 @@ const { auth, authorizeRoles } = require('../middleware/auth');
 const WhatsAppService = require('../utils/whatsapp');
 const router = express.Router();
 
-// UPI ID of Vasantdada Agency (Admin can change this)
-const UPI_ID = '9975882125@okbizaxis'; // This should be from admin settings/config
+// UPI ID of Vasantdada Agency (Admin can change this via env)
+const UPI_ID = process.env.UPI_ID || '9975882125@okbizaxis';
 
 /**
  * Payment Flow:
@@ -17,9 +17,13 @@ const UPI_ID = '9975882125@okbizaxis'; // This should be from admin settings/con
  * 4. Admin Dashboard → Review pending payments
  * 5. Admin "Approve" → Order status = "confirmed", Payment = "approved_by_admin"
  * 6. Admin "Reject" → Order status = "failed", Payment = "rejected_by_admin"
+ *
+ * IMPORTANT: Fixed routes that match literal path segments (/generate-qr, /pending/all, /order/:id)
+ * MUST be defined BEFORE parameterised routes (/:paymentId) to prevent Express
+ * from swallowing them as parameter values.
  */
 
-// 1️⃣ Generate QR Code for Payment
+// ─── 1. Generate QR Code for Payment ────────────────────────────────────────
 router.post('/generate-qr', auth, async (req, res) => {
   try {
     const { orderId, amount } = req.body;
@@ -32,9 +36,14 @@ router.post('/generate-qr', auth, async (req, res) => {
     const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
-    // Check if user owns this order
-    if (order.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'You can only view your own orders' });
+    // Check if user owns this order (skip check for admin)
+    const isAdmin = req.user?.id === 'admin-fixed' || req.user?._id === 'admin-fixed';
+    if (!isAdmin) {
+      const orderUserId = order.user?.toString();
+      const requestUserId = req.user?._id?.toString();
+      if (orderUserId !== requestUserId) {
+        return res.status(403).json({ message: 'You can only view your own orders' });
+      }
     }
 
     // Check if payment already exists
@@ -44,7 +53,7 @@ router.post('/generate-qr', auth, async (req, res) => {
       // Create payment record
       payment = new Payment({
         order: orderId,
-        user: req.user._id,
+        user: isAdmin ? order.user : req.user._id,
         amount: amount,
         paymentMethod: 'qr_code'
       });
@@ -56,27 +65,35 @@ router.post('/generate-qr', auth, async (req, res) => {
       payment.qrCode = qrCodeImage;
       await payment.save();
     }
-      // Optional: Log/Send automated welcome notification via API
+
+    // Generate WhatsApp link (safe even if phone is undefined)
+    const whatsappLink = WhatsAppService.generatePaymentLink(
+      order._id,
+      amount,
+      req.user?.name || 'Customer'
+    );
+
+    // Optional: Mock WhatsApp notification (won't crash if phone is undefined)
+    if (req.user?.phone) {
       WhatsAppService.sendNotification(req.user.phone, {
         type: 'ORDER_CREATED',
         orderId: orderId,
         amount: amount
       });
-      
-      const whatsappLink = WhatsAppService.generatePaymentLink(order._id, amount, req.user.name || 'Customer');
+    }
 
-      res.json({
-        message: 'Payment details generated successfully',
-        payment: {
-          id: payment._id,
-          qrCode: payment.qrCode,
-          amount: payment.amount,
-          status: payment.status,
-          upiId: UPI_ID,
-          orderId: orderId,
-          whatsappLink: whatsappLink
-        }
-      });
+    res.json({
+      message: 'Payment details generated successfully',
+      payment: {
+        id: payment._id,
+        qrCode: payment.qrCode,
+        amount: payment.amount,
+        status: payment.status,
+        upiId: UPI_ID,
+        orderId: orderId,
+        whatsappLink: whatsappLink
+      }
+    });
 
   } catch (error) {
     console.error('Generate QR error:', error);
@@ -84,37 +101,97 @@ router.post('/generate-qr', auth, async (req, res) => {
   }
 });
 
-// 2️⃣ Customer Claims "I have paid"
-router.post('/:paymentId/mark-paid', auth, async (req, res) => {
+// ─── 4. Get All Pending Payments (ADMIN ONLY) ─────────────────────────────
+// IMPORTANT: This MUST be defined before /:paymentId to avoid Express
+// treating "pending" as a paymentId parameter value.
+router.get('/pending/all', auth, authorizeRoles('OWNER', 'ADMIN'), async (req, res) => {
   try {
-    const payment = await Payment.findById(req.params.paymentId);
-    if (!payment) return res.status(404).json({ message: 'Payment not found' });
+    const payments = await Payment.find({ status: 'verified_by_user' })
+      .populate('order')
+      .populate('user', 'name phone')
+      .sort('-userClaimedAt');
 
-    // Verify user owns this payment
-    if (payment.user.toString() !== req.user._id.toString()) {
+    res.json(payments);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ─── 7. Get Order Payment Status ─────────────────────────────────────────
+// IMPORTANT: This MUST be defined before /:paymentId too.
+router.get('/order/:orderId', auth, async (req, res) => {
+  try {
+    const payment = await Payment.findOne({ order: req.params.orderId });
+
+    if (!payment) {
+      return res.json({
+        message: 'No payment found for this order',
+        payment: null
+      });
+    }
+
+    res.json(payment);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ─── 2. Customer Claims "I have paid" ────────────────────────────────────
+router.post('/order/:orderId/mark-paid', auth, async (req, res) => {
+  try {
+    const { utr, referenceNumber, screenshot } = req.body;
+    
+    if (!utr) {
+      return res.status(400).json({ message: 'UTR / Transaction ID is required.' });
+    }
+
+    let payment = await Payment.findOne({ order: req.params.orderId });
+    if (!payment) {
+      // In case payment wasn't explicitly generated via QR API endpoint
+      payment = new Payment({
+        order: req.params.orderId,
+        user: req.user._id,
+        amount: 0, // Gets populated later when Admin sees it if not captured
+        paymentMethod: 'qr_code'
+      });
+    }
+
+    // Verify user owns this payment (skip for admin)
+    const isAdmin = req.user?.id === 'admin-fixed' || req.user?._id === 'admin-fixed';
+    if (!isAdmin && payment.user.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'You can only verify your own payments' });
     }
 
     if (payment.status !== 'pending') {
-      return res.status(400).json({ message: 'Payment has already been processed' });
+      return res.status(400).json({ message: 'Payment has already been processed or is awaiting verification.' });
     }
 
-    // Update payment status
+    // Update payment status & collect proof
+    payment.utr = utr;
+    payment.referenceNumber = referenceNumber || null;
+    payment.screenshot = screenshot || null;
     payment.status = 'verified_by_user';
     payment.userClaimedPaid = true;
     payment.userClaimedAt = new Date();
     await payment.save();
 
     // Update order status to "pending_verification"
-    // Use in admin panel to show payments waiting for approval
     const order = await Order.findById(payment.order);
-    order.paymentStatus = 'pending_verification';
-    await order.save();
-    // Send notification to OWNER
+    if (order) {
+      order.paymentStatus = 'pending_verification';
+      // Safety calculation for amount if payment object didn't have it natively
+      if (payment.amount === 0) {
+        payment.amount = order.totalAmount;
+        await payment.save();
+      }
+      await order.save();
+    }
+
+    // Notify owner via WhatsApp (mock, won't crash)
     WhatsAppService.sendNotification(process.env.OWNER_WHATSAPP || '919999999999', {
       type: 'NEW_PAYMENT_ALERT_OWNER',
-      orderId: order._id,
-      customerName: req.user.name || 'Customer'
+      orderId: payment.order,
+      customerName: req.user?.name || 'Customer'
     });
 
     res.json({
@@ -127,7 +204,7 @@ router.post('/:paymentId/mark-paid', auth, async (req, res) => {
   }
 });
 
-// 3️⃣ Get Payment Details
+// ─── 3. Get Payment Details ───────────────────────────────────────────────
 router.get('/:paymentId', auth, async (req, res) => {
   try {
     const payment = await Payment.findById(req.params.paymentId)
@@ -142,21 +219,7 @@ router.get('/:paymentId', auth, async (req, res) => {
   }
 });
 
-// 4️⃣ Get All Pending Payments (ADMIN ONLY)
-router.get('/pending/all', auth, authorizeRoles('OWNER', 'ADMIN'), async (req, res) => {
-  try {
-    const payments = await Payment.find({ status: 'verified_by_user' })
-      .populate('order')
-      .populate('user', 'name phone')
-      .sort('-userClaimedAt');
-
-    res.json(payments);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// 5️⃣ Admin: Approve Payment
+// ─── 5. Admin: Approve Payment ───────────────────────────────────────────
 router.post('/:paymentId/approve', auth, authorizeRoles('OWNER', 'ADMIN'), async (req, res) => {
   try {
     const { verificationNotes } = req.body;
@@ -170,13 +233,16 @@ router.post('/:paymentId/approve', auth, authorizeRoles('OWNER', 'ADMIN'), async
 
     // Update payment
     payment.status = 'approved_by_admin';
-    payment.verifiedBy = req.user._id;
+    payment.verifiedBy = req.user._id !== 'admin-fixed' ? req.user._id : undefined;
     payment.verificationNotes = verificationNotes || 'Approved by admin';
     payment.verifiedAt = new Date();
     await payment.save();
 
-    // Update order status
+    // Update order status — with null check
     const order = await Order.findById(payment.order);
+    if (!order) {
+      return res.status(404).json({ message: 'Associated order not found' });
+    }
     order.status = 'confirmed';
     order.paymentStatus = 'paid';
     await order.save();
@@ -186,9 +252,10 @@ router.post('/:paymentId/approve', auth, authorizeRoles('OWNER', 'ADMIN'), async
     io?.emit('payment_approved', { orderId: order._id, paymentId: payment._id });
     io?.to(order.user.toString()).emit('order_confirmed', order);
 
-    // Notify Customer about payment approval
-    const customer = await require('../models/User').findById(order.user);
-    if (customer && customer.whatsappNotifications) {
+    // Notify Customer (mock, won't crash)
+    const User = require('../models/User');
+    const customer = await User.findById(order.user).catch(() => null);
+    if (customer?.phone) {
       WhatsAppService.sendNotification(customer.phone, {
         type: 'PAYMENT_APPROVED',
         orderId: order._id
@@ -206,7 +273,7 @@ router.post('/:paymentId/approve', auth, authorizeRoles('OWNER', 'ADMIN'), async
   }
 });
 
-// 6️⃣ Admin: Reject Payment
+// ─── 6. Admin: Reject Payment ────────────────────────────────────────────
 router.post('/:paymentId/reject', auth, authorizeRoles('OWNER', 'ADMIN'), async (req, res) => {
   try {
     const { rejectionReason } = req.body;
@@ -224,13 +291,16 @@ router.post('/:paymentId/reject', auth, authorizeRoles('OWNER', 'ADMIN'), async 
 
     // Update payment
     payment.status = 'rejected_by_admin';
-    payment.verifiedBy = req.user._id;
+    payment.verifiedBy = req.user._id !== 'admin-fixed' ? req.user._id : undefined;
     payment.rejectionReason = rejectionReason;
     payment.verifiedAt = new Date();
     await payment.save();
 
-    // Update order status
+    // Update order status — with null check
     const order = await Order.findById(payment.order);
+    if (!order) {
+      return res.status(404).json({ message: 'Associated order not found' });
+    }
     order.status = 'failed';
     order.paymentStatus = 'failed';
     await order.save();
@@ -245,24 +315,6 @@ router.post('/:paymentId/reject', auth, authorizeRoles('OWNER', 'ADMIN'), async 
       order
     });
 
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// 7️⃣ Get Order Payment Status
-router.get('/order/:orderId', auth, async (req, res) => {
-  try {
-    const payment = await Payment.findOne({ order: req.params.orderId });
-    
-    if (!payment) {
-      return res.json({
-        message: 'No payment found for this order',
-        payment: null
-      });
-    }
-
-    res.json(payment);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

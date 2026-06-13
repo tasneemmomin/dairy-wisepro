@@ -5,12 +5,22 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    host: true,
+    // allowedHosts: true is deprecated in Vite 6+; use the array form or omit for dev
     proxy: {
-      '/api': 'http://localhost:5000',
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true
+      },
       '/socket.io': {
         target: 'http://localhost:5000',
-        ws: true
+        ws: true,
+        changeOrigin: true
       }
     }
+  },
+  build: {
+    // Raise the chunk warning limit slightly (jsPDF + chart.js are large)
+    chunkSizeWarningLimit: 800
   }
 })

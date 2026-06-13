@@ -1,9 +1,9 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-// ─── Fixed Admin Credentials (same as routes/auth.js) ────────────────────
-const ADMIN_EMAIL = 'vasantdadaagency816@gmail.com';
-const ADMIN_NAME  = 'Kedar Patil';
+// ─── Fixed Admin Credentials (from env vars with hardcoded fallback) ────────
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'vasantdadaagency816@gmail.com';
+const ADMIN_NAME  = process.env.ADMIN_NAME  || 'Kedar Patil';
 
 const auth = async (req, res, next) => {
   try {

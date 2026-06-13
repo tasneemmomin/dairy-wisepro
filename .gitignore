@@ -8,6 +8,11 @@ server/node_modules/
 .env.local
 .env.*.local
 
+# Firebase service account keys (NEVER commit these — they contain private keys)
+*firebase-adminsdk*.json
+firebase-service-account.json
+*serviceAccountKey*.json
+
 # Build output
 dist/
 build/

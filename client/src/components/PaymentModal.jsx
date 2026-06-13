@@ -1,9 +1,24 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle, ShieldCheck } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { X, ShieldCheck } from 'lucide-react';
 
-export default function PaymentModal({ isOpen, onClose, totalAmount, onConfirm, whatsappUrl }) {
+// Fallback: generates a UPI QR placeholder if the static image is missing
+const QRImageWithFallback = ({ src, alt, upiId }) => (
+  <img
+    src={src}
+    alt={alt}
+    className="w-32 h-32 object-contain rounded-lg shadow-sm border border-gray-200 bg-white"
+    onError={(e) => {
+      // If the static QR image file doesn't exist, show a placeholder with UPI ID text
+      e.target.onerror = null;
+      e.target.src = `https://api.qrserver.com/v1/create-qr-code/?size=128x128&data=upi://pay?pa=${encodeURIComponent(upiId)}&pn=Vasantdada%20Agency`;
+    }}
+  />
+);
+
+export default function PaymentModal({ isOpen, onClose, totalAmount, onConfirm }) {
   if (!isOpen) return null;
+
+  const UPI_ID = '9975882125@okbizaxis';
 
   const handleWhatsAppPay = () => {
     onConfirm();
@@ -12,7 +27,7 @@ export default function PaymentModal({ isOpen, onClose, totalAmount, onConfirm, 
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -34,23 +49,25 @@ export default function PaymentModal({ isOpen, onClose, totalAmount, onConfirm, 
               <h4 className="text-4xl font-extrabold text-gray-900">₹{totalAmount?.toFixed(0) || 0}</h4>
             </div>
 
-            {/* Uploaded Payment QR Codes */}
+            {/* QR Codes — uses static files with online fallback if files missing */}
             <div className="flex justify-center gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
-              <img 
-                src="/qrcode1.jpg" 
-                alt="PhonePe QR" 
-                className="w-32 h-32 object-contain rounded-lg shadow-sm border border-gray-200 bg-white"
+              <QRImageWithFallback
+                src="/qrcode1.jpg"
+                alt="PhonePe QR"
+                upiId={UPI_ID}
               />
-              <img 
-                src="/qrcode2.jpg" 
-                alt="GPay QR" 
-                className="w-32 h-32 object-contain rounded-lg shadow-sm border border-gray-200 bg-white"
+              <QRImageWithFallback
+                src="/qrcode2.jpg"
+                alt="GPay QR"
+                upiId={UPI_ID}
               />
             </div>
-            
+
             <div className="text-center">
-               <p className="text-xs text-gray-500 mb-1">Scan to pay with any UPI app</p>
-               <p className="font-medium text-sm text-gray-700 font-mono bg-gray-100 py-1.5 px-3 rounded-lg inline-block">9975882125@okbizaxis</p>
+              <p className="text-xs text-gray-500 mb-1">Scan to pay with any UPI app</p>
+              <p className="font-medium text-sm text-gray-700 font-mono bg-gray-100 py-1.5 px-3 rounded-lg inline-block">
+                {UPI_ID}
+              </p>
             </div>
 
             <div className="flex items-center gap-4 py-2">
@@ -58,14 +75,14 @@ export default function PaymentModal({ isOpen, onClose, totalAmount, onConfirm, 
               <span className="text-xs text-gray-400 font-medium">OR</span>
               <div className="h-px bg-gray-200 flex-1"></div>
             </div>
-            
+
             <p className="text-xs text-center text-gray-400">
-               Click below to automatically share details with the Agency owner.
+              Click below to automatically share details with the Agency owner.
             </p>
           </div>
 
           <div className="p-6 bg-gray-50 border-t border-gray-100 flex gap-3">
-            <button 
+            <button
               onClick={handleWhatsAppPay}
               className="w-full py-3.5 bg-[#25D366] rounded-xl text-sm font-bold text-white hover:bg-[#128C7E] transition shadow-lg shadow-green-200 flex items-center justify-center gap-2"
             >
