@@ -40,7 +40,7 @@ const ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:3000',
-  'https://dairy-ospro.vercel.app',
+  'https://dairy-wisepro-6nzr.vercel.app',
   // Support any additional origin from CLIENT_URL env var (set this on Render)
   ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : [])
 ];
