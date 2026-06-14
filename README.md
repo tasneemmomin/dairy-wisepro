@@ -20,13 +20,6 @@ DairyOS Pro is a full-stack, production-ready system specifically designed for V
 - **Authentication:** JWT Email/Password (Migrated from Firebase OTP)
 - **Deployment:** Vercel (Frontend) & Render (Backend/ML)
 
-## 🌐 Live Demo
-👉 **[https://dairy-wisepro-6nzr.vercel.app](https://dairy-wisepro-6nzr.vercel.app)**
-
-## 🔗 API
-- Backend: https://dairy-wisepro.onrender.com
-- ML API: https://dairy-wisepro-1.onrender.com
-
 
 ## Documentation
 
