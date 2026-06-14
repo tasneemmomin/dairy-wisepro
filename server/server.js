@@ -41,17 +41,20 @@ const ALLOWED_ORIGINS = [
   'http://127.0.0.1:5173',
   'http://localhost:3000',
   'https://dairy-wisepro-6nzr.vercel.app',
+  'https://dairy-wisepro-6nzr-pvt4pjleh-tasneemmomins-projects.vercel.app',
   // Support any additional origin from CLIENT_URL env var (set this on Render)
   ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : [])
 ];
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, Postman, same-origin)
-    if (!origin) return callback(null, true);
-    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
-    callback(new Error(`CORS: Origin ${origin} is not allowed.`));
-  },
+  if (!origin) return callback(null, true);
+  if (
+    ALLOWED_ORIGINS.includes(origin) ||
+    origin.endsWith('.vercel.app')  // ← ye add karo
+  ) return callback(null, true);
+  callback(new Error(`CORS: Origin ${origin} is not allowed.`));
+},
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
