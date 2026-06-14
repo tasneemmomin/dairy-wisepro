@@ -6,10 +6,9 @@ const { auth, authorizeRoles } = require('../middleware/auth');
 const router = express.Router();
 
 // ─── Fixed Admin Credentials (from env vars with hardcoded fallback) ────────
-const ADMIN_EMAIL    = process.env.ADMIN_EMAIL    || 'vasantdadaagency816@gmail.com';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'vasantdada123';
-const ADMIN_NAME     = process.env.ADMIN_NAME     || 'Kedar Patil';
-
+const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const ADMIN_NAME     = process.env.ADMIN_NAME || 'Kedar Patil';
 // ─── 1. Register (Signup) ─────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
   try {
