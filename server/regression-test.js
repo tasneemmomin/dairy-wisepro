@@ -1,5 +1,5 @@
 /* Full business-flow regression: every endpoint the UI touches */
-const BASE = 'http://localhost:5000/api';
+const BASE = process.env.BASE || 'http://localhost:5000/api';
 let pass = 0, fail = 0;
 const ok = (name, cond) => { if (cond) { pass++; console.log('  PASS', name); } else { fail++; console.log('  FAIL', name); } };
 

@@ -191,6 +191,14 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/dairyospro';
 const LOCAL_MONGODB_FALLBACK = process.env.MONGODB_LOCAL_FALLBACK || 'mongodb://127.0.0.1:27017/dairyospro';
+
+// Optional last-resort fallback: an EPHEMERAL in-process MongoDB. Used when no
+// real database is reachable (e.g. deleted Atlas cluster, no local Mongo) so the
+// app still boots fully functional. Data resets on restart — set a valid
+// MONGODB_URI to get persistent storage; the chain always prefers it.
+let MongoMemoryReplSet = null;
+try { ({ MongoMemoryReplSet } = require('mongodb-memory-server')); } catch { /* package not installed */ }
+let memServer = null;
 const isLocalUri = (uri) => uri.includes('127.0.0.1') || uri.includes('localhost');
 
 // Public resolvers used ONLY if the system DNS fails to resolve Atlas SRV records
@@ -267,6 +275,23 @@ async function connectMongoChain() {
         return true;
       } catch (err3) {
         console.warn(`Local fallback failed: ${err3.message}`);
+      }
+    }
+
+    // Last resort: ephemeral in-memory database so the service stays usable
+    if (MongoMemoryReplSet && process.env.DISABLE_MEMORY_DB !== '1') {
+      try {
+        if (!memServer) {
+          console.warn('⚠ No real database reachable — starting EPHEMERAL in-memory MongoDB.');
+          console.warn('  Data will reset on restart. Set a valid MONGODB_URI for persistent storage.');
+          memServer = await MongoMemoryReplSet.create({
+            replSet: { count: 1, dbName: 'dairyospro', storageEngine: 'wiredTiger' }
+          });
+        }
+        await tryConnect(memServer.getUri('dairyospro'));
+        return true;
+      } catch (err4) {
+        console.warn(`In-memory fallback failed: ${err4.message}`);
       }
     }
     return false;
