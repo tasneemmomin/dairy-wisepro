@@ -1,6 +1,7 @@
 const express = require('express');
 const DeliveryLog = require('../models/DeliveryLog');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 const { auth, authorizeRoles } = require('../middleware/auth');
 const router = express.Router();
 
@@ -29,9 +30,20 @@ router.post('/log', auth, authorizeRoles('OWNER', 'ADMIN', 'DELIVERY'), async (r
   try {
     const { customerId, status, products, notes } = req.body;
     
+    if (!customerId) {
+      return res.status(400).json({ message: 'customerId is required' });
+    }
+    if (!['Pending', 'Delivered', 'Missed', 'Cancelled'].includes(status)) {
+      return res.status(400).json({ message: 'status must be Pending, Delivered, Missed or Cancelled' });
+    }
+
+    // Only record a delivery agent if we have a real DB user id
+    // (the fixed admin account has no DB record, and an invalid id would fail casting)
+    const deliveryBoyValid = mongoose.isValidObjectId(req.user._id);
+
     const log = new DeliveryLog({
       customer: customerId,
-      deliveryBoy: req.user._id,
+      ...(deliveryBoyValid ? { deliveryBoy: req.user._id } : {}),
       status,
       products,
       notes
@@ -40,6 +52,9 @@ router.post('/log', auth, authorizeRoles('OWNER', 'ADMIN', 'DELIVERY'), async (r
     await log.save();
     res.status(201).json(log);
   } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({ message: 'Invalid customer id' });
+    }
     res.status(500).json({ message: error.message });
   }
 });

@@ -2,13 +2,6 @@ require('dotenv').config();
 const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
 
-// Fix DNS SRV resolution issues
-dns.setServers(['8.8.8.8', '8.8.4.4']);
-
-// Fix Node.js DNS resolution timeout
-const { Resolver } = require('dns').promises;
-const resolver = new Resolver();
-resolver.setServers(['8.8.8.8', '8.8.4.4']);
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -31,11 +24,19 @@ const deliveryRoutes = require('./routes/delivery');
 const seedDatabase = require('./utils/seed');
 const runMigrations = require('./utils/migrate');
 
+// Safety: never let the server crash because JWT_SECRET is missing
+if (!process.env.JWT_SECRET) {
+  process.env.JWT_SECRET = 'dairyospro_dev_secret_change_me_in_production_2026';
+  console.warn('  ⚠ JWT_SECRET not set — using insecure development fallback. SET THIS IN PRODUCTION!');
+}
+
 const app = express();
 const server = http.createServer(app);
 
+// Render / proxies sit in front in production
+app.set('trust proxy', 1);
+
 // ─── Allowed Origins ─────────────────────────────────────────────────────────
-// Add your Vercel production URL here (or set CLIENT_URL in env)
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
@@ -48,13 +49,13 @@ const ALLOWED_ORIGINS = [
 
 const corsOptions = {
   origin: (origin, callback) => {
-  if (!origin) return callback(null, true);
-  if (
-    ALLOWED_ORIGINS.includes(origin) ||
-    origin.endsWith('.vercel.app')  // ← ye add karo
-  ) return callback(null, true);
-  callback(new Error(`CORS: Origin ${origin} is not allowed.`));
-},
+    if (!origin) return callback(null, true);
+    if (
+      ALLOWED_ORIGINS.includes(origin) ||
+      origin.endsWith('.vercel.app')
+    ) return callback(null, true);
+    callback(new Error(`CORS: Origin ${origin} is not allowed.`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -62,7 +63,13 @@ const corsOptions = {
 
 const io = new Server(server, {
   cors: {
-    origin: ALLOWED_ORIGINS,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.vercel.app')) {
+        return callback(null, true);
+      }
+      callback(new Error('Not allowed by CORS'));
+    },
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -95,6 +102,17 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/delivery', deliveryRoutes);
 
+// ─── Public storefront configuration (no auth — safe values only) ────────────
+// Keeps the UPI ID / WhatsApp number in one place (server env) so the owner can
+// change them without redeploying the frontend.
+app.get('/api/config', (req, res) => {
+  res.json({
+    upiId: process.env.UPI_ID || '9975882125@okbizaxis',
+    agencyName: 'Vasantdada Agency',
+    whatsappNumber: process.env.OWNER_WHATSAPP || '918766997752'
+  });
+});
+
 // ─── Health check ────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   res.json({
@@ -120,12 +138,39 @@ app.get('/api/test', (req, res) => {
   });
 });
 
+// ─── 404 for unknown API routes (prevents HTML/JSON confusion) ───────────────
+app.use('/api', (req, res) => {
+  res.status(404).json({ message: `Route not found: ${req.method} ${req.originalUrl}` });
+});
+
 // ─── Global Error Handler ────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.message);
+
   if (err.message?.includes('CORS')) {
     return res.status(403).json({ message: err.message });
   }
+
+  // Malformed ObjectId — return 400, not 500
+  if (err.name === 'CastError') {
+    return res.status(400).json({ message: `Invalid ${err.path || 'ID'} format` });
+  }
+
+  // Mongoose validation — return 400 with details
+  if (err.name === 'ValidationError') {
+    const details = Object.values(err.errors).map(e => e.message);
+    return res.status(400).json({ message: details.join('; ') });
+  }
+
+  // Oversized JSON body
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ message: 'Payload too large' });
+  }
+
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ message: 'Invalid JSON in request body' });
+  }
+
   res.status(500).json({ message: 'Internal server error' });
 });
 
@@ -134,7 +179,7 @@ io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
   socket.on('join', (userId) => {
-    socket.join(userId);
+    if (userId) socket.join(String(userId));
   });
 
   socket.on('disconnect', () => {
@@ -145,27 +190,94 @@ io.on('connection', (socket) => {
 // ─── Connect to MongoDB and start server ─────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/dairyospro';
+const LOCAL_MONGODB_FALLBACK = process.env.MONGODB_LOCAL_FALLBACK || 'mongodb://127.0.0.1:27017/dairyospro';
+const isLocalUri = (uri) => uri.includes('127.0.0.1') || uri.includes('localhost');
 
-mongoose.connect(MONGODB_URI, {
+// Public resolvers used ONLY if the system DNS fails to resolve Atlas SRV records
+// (corporate networks / firewalls / ISP DNS issues). Never applied globally.
+const PUBLIC_DNS = ['8.8.8.8', '8.8.4.4', '1.1.1.1'];
+
+const MONGO_OPTS = {
   serverSelectionTimeoutMS: 15000,
   family: 4,
   retryWrites: true,
   w: 'majority',
   maxPoolSize: 10,
   minPoolSize: 2
-})
-  .then(async () => {
-    console.log('MongoDB connected');
-    await runMigrations(mongoose.connection.db);
-    await seedDatabase();
-    server.listen(PORT, () => {
-      console.log(`\n  DairyOS Pro Server running on http://localhost:${PORT}`);
-      console.log('  ==========================================\n');
-    });
-  })
-  .catch((err) => {
-    console.error('MongoDB connection error:', err.message);
-    console.log('\n  Make sure MongoDB is running on your machine.');
-    console.log('  Download: https://www.mongodb.com/try/download/community\n');
-    process.exit(1);
+};
+
+async function tryConnect(uri) {
+  mongoose.set('strictQuery', true);
+  await mongoose.connect(uri, MONGO_OPTS);
+}
+
+// If SRV lookup itself failed, retry using public DNS servers, then restore defaults
+async function tryWithPublicDns(uri) {
+  try {
+    dns.setServers(PUBLIC_DNS);
+    await tryConnect(uri);
+  } finally {
+    // Restore system resolvers for the rest of the process
+    try { dns.setServers([]); } catch { /* ignore */ }
+  }
+}
+
+function isDnsError(err) {
+  return /querySrv|queryTxt|ENOTFOUND|ETIMEOUT|EVSRV|ESERVFAIL/i.test(err?.message || '');
+}
+
+let assertedServer = false;
+async function startMongoAndServer() {
+  // 1) Primary URI (Atlas or local) with default system DNS
+  try {
+    await tryConnect(MONGODB_URI);
+  } catch (err) {
+    const dnsRelated = isDnsError(err);
+    console.warn(`MongoDB primary connection failed: ${err.message}`);
+
+    // 2) DNS problem? Retry the SAME URI via public resolvers
+    if (dnsRelated && !isLocalUri(MONGODB_URI)) {
+      console.warn('Retrying DNS resolution via public resolvers (8.8.8.8 / 1.1.1.1)...');
+      try {
+        await tryWithPublicDns(MONGODB_URI);
+      } catch (err2) {
+        console.warn(`Public-DNS retry failed: ${err2.message}`);
+      }
+    }
+
+    // 3) Still down? Fall back to a local MongoDB if the primary isn't local
+    if (mongoose.connection.readyState !== 1 && !isLocalUri(MONGODB_URI)) {
+      console.warn('Falling back to local MongoDB (data will be local-only until the cloud URI is reachable)...');
+      await tryConnect(LOCAL_MONGODB_FALLBACK);
+    }
+
+    if (mongoose.connection.readyState !== 1) throw err;
+  }
+
+  console.log('MongoDB connected');
+  await runMigrations(mongoose.connection.db);
+  await seedDatabase();
+  server.listen(PORT, () => {
+    assertedServer = true;
+    console.log(`\n  DairyOS Pro Server running on http://localhost:${PORT}`);
+    console.log('  ==========================================\n');
   });
+}
+
+// Visibility into mid-session network loss / recovery (mongoose auto-reconnects)
+mongoose.connection.on('disconnected', () => {
+  if (assertedServer) console.warn('⚠ MongoDB disconnected — mongoose will keep retrying...');
+});
+mongoose.connection.on('reconnected', () => {
+  console.log('✓ MongoDB reconnected');
+});
+
+startMongoAndServer().catch((err) => {
+  console.error('MongoDB connection error:', err.message);
+  console.log('\n  No reachable MongoDB found (cloud URI AND local fallback).');
+  console.log('  Options:');
+  console.log('   1. Check your internet/network and restart.');
+  console.log('   2. Start a local MongoDB: https://www.mongodb.com/try/download/community');
+  console.log('   3. Set MONGODB_LOCAL_FALLBACK in server/.env to a working local URI.\n');
+  process.exit(1);
+});

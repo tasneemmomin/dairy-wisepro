@@ -58,21 +58,33 @@ export default function SubscriptionsPage() {
   };
 
   const handlePause = async (id) => {
-    await API.put(`/subscriptions/${id}/pause`);
-    toast.success('Subscription paused');
-    fetchData();
+    try {
+      await API.put(`/subscriptions/${id}/pause`);
+      toast.success('Subscription paused');
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to pause subscription');
+    }
   };
 
   const handleResume = async (id) => {
-    await API.put(`/subscriptions/${id}/resume`);
-    toast.success('Subscription resumed');
-    fetchData();
+    try {
+      await API.put(`/subscriptions/${id}/resume`);
+      toast.success('Subscription resumed');
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to resume subscription');
+    }
   };
 
   const handleCancel = async (id) => {
-    await API.put(`/subscriptions/${id}/cancel`);
-    toast.success('Subscription cancelled');
-    fetchData();
+    try {
+      await API.put(`/subscriptions/${id}/cancel`);
+      toast.success('Subscription cancelled');
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to cancel subscription');
+    }
   };
 
   return (

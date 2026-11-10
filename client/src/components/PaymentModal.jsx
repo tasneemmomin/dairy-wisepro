@@ -1,5 +1,9 @@
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ShieldCheck } from 'lucide-react';
+import API from '../services/api';
+
+const FALLBACK = { upiId: '9975882125@okbizaxis' };
 
 // Fallback: generates a UPI QR placeholder if the static image is missing
 const QRImageWithFallback = ({ src, alt, upiId }) => (
@@ -16,9 +20,18 @@ const QRImageWithFallback = ({ src, alt, upiId }) => (
 );
 
 export default function PaymentModal({ isOpen, onClose, totalAmount, onConfirm }) {
+  const [config, setConfig] = useState(FALLBACK);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    API.get('/config').then(res => {
+      if (res.data?.upiId) setConfig(res.data);
+    }).catch(() => {});
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  const UPI_ID = '9975882125@okbizaxis';
+  const UPI_ID = config.upiId;
 
   const handleWhatsAppPay = () => {
     onConfirm();

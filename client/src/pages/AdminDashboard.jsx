@@ -7,6 +7,10 @@ import API from '../services/api';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler);
 
+// ML service URL — configure via VITE_ML_URL (e.g. your Render ML service).
+// Falls back to localhost:8000 for local development.
+const ML_URL = (import.meta.env.VITE_ML_URL || 'http://localhost:8000').replace(/\/$/, '');
+
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [chartData, setChartData] = useState(null);
@@ -21,7 +25,7 @@ export default function AdminDashboard() {
 
   const fetchAIInsights = async () => {
     try {
-      const res = await fetch('http://localhost:8000/predict/demand', {
+      const res = await fetch(`${ML_URL}/predict/demand`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ day_of_week: new Date().getDay(), month: new Date().getMonth() + 1, temperature: 32, festival: 0, previous_demand: 120 })

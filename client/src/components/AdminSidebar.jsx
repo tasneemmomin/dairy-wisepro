@@ -8,24 +8,25 @@ import {
 import { useState } from 'react';
 
 const sidebarLinks = [
-  { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/admin/customers', label: 'Customers', icon: Users },
-  { to: '/admin/subscriptions', label: 'Subscriptions', icon: CalendarCheck },
-  { to: '/admin/delivery', label: 'Daily Delivery', icon: Truck },
-  { to: '/admin/billing', label: 'Monthly Bills', icon: BarChart3 },
-  { to: '/admin/products', label: 'Products', icon: Package },
-  { to: '/admin/orders', label: 'Orders', icon: ShoppingCart },
-  { to: '/admin/inventory', label: 'Inventory', icon: Warehouse },
-  { to: '/admin/vendors', label: 'Vendors', icon: Warehouse },
-  { to: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
-  { to: '/admin/ai-insights', label: 'AI Insights', icon: Brain },
+  { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, roles: ['OWNER', 'ADMIN', 'STAFF'] },
+  { to: '/admin/customers', label: 'Customers', icon: Users, roles: ['OWNER', 'ADMIN', 'STAFF'] },
+  { to: '/admin/subscriptions', label: 'Subscriptions', icon: CalendarCheck, roles: ['OWNER', 'ADMIN', 'STAFF'] },
+  { to: '/admin/delivery', label: 'Daily Delivery', icon: Truck, roles: ['OWNER', 'ADMIN', 'STAFF', 'DELIVERY'] },
+  { to: '/admin/billing', label: 'Monthly Bills', icon: BarChart3, roles: ['OWNER', 'ADMIN'] },
+  { to: '/admin/products', label: 'Products', icon: Package, roles: ['OWNER', 'ADMIN', 'STAFF'] },
+  { to: '/admin/orders', label: 'Orders', icon: ShoppingCart, roles: ['OWNER', 'ADMIN', 'STAFF'] },
+  { to: '/admin/inventory', label: 'Inventory', icon: Warehouse, roles: ['OWNER', 'ADMIN', 'STAFF'] },
+  { to: '/admin/vendors', label: 'Vendors', icon: Warehouse, roles: ['OWNER', 'ADMIN', 'STAFF'] },
+  { to: '/admin/analytics', label: 'Analytics', icon: BarChart3, roles: ['OWNER', 'ADMIN', 'STAFF'] },
+  { to: '/admin/ai-insights', label: 'AI Insights', icon: Brain, roles: ['OWNER', 'ADMIN', 'STAFF'] },
 ];
 
 export default function AdminSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+  const links = sidebarLinks.filter(l => !l.roles || l.roles.includes(user?.role));
 
   const isActive = (path) => {
     if (path === '/admin') return location.pathname === '/admin';
@@ -54,7 +55,7 @@ export default function AdminSidebar() {
 
       {/* Links */}
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {sidebarLinks.map(link => (
+        {links.map(link => (
           <Link key={link.to} to={link.to}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
               isActive(link.to)

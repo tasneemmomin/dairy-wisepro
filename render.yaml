@@ -13,6 +13,8 @@ services:
         value: 5000
       - key: MONGODB_URI
         sync: false  # Set this in Render dashboard
+      - key: MONGODB_LOCAL_FALLBACK
+        value: mongodb://127.0.0.1:27017/dairyospro
       - key: JWT_SECRET
         sync: false  # Set this in Render dashboard
       - key: CLIENT_URL

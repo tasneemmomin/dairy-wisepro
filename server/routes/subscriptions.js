@@ -3,6 +3,13 @@ const Subscription = require('../models/Subscription');
 const { auth, authorizeRoles } = require('../middleware/auth');
 const router = express.Router();
 
+// ─── Helper: admins manage any subscription, customers only their own ───────
+function subAccessFilter(req) {
+  const isAdminLike = ['OWNER', 'ADMIN', 'STAFF'].includes(req.user.role) || req.user.id === 'admin-fixed';
+  if (isAdminLike) return { _id: req.params.id };
+  return { _id: req.params.id, user: req.user._id };
+}
+
 // Get user subscriptions
 router.get('/my', auth, async (req, res) => {
   try {
@@ -27,68 +34,96 @@ router.get('/', auth, authorizeRoles('OWNER', 'ADMIN', 'STAFF'), async (req, res
 router.post('/', auth, async (req, res) => {
   try {
     const { product, planType, dailyQuantity, weeklyPlan, pricePerUnit, user } = req.body;
-    const targetUserId = (['OWNER', 'ADMIN', 'STAFF'].includes(req.user.role) && user) ? user : req.user._id;
-    
+
+    if (!product) {
+      return res.status(400).json({ message: 'Product is required' });
+    }
+    if (!planType || !['daily', 'weekly', 'custom'].includes(planType)) {
+      return res.status(400).json({ message: 'Plan type must be daily, weekly or custom' });
+    }
+    if (pricePerUnit == null || isNaN(Number(pricePerUnit)) || Number(pricePerUnit) < 0) {
+      return res.status(400).json({ message: 'A valid price per unit is required' });
+    }
+
+    // Admins/staff can create a subscription on behalf of a customer
+    const isAdminLike = ['OWNER', 'ADMIN', 'STAFF'].includes(req.user.role);
+    const targetUserId = (isAdminLike && user) ? user : req.user._id;
+    if (targetUserId === 'admin-fixed') {
+      return res.status(400).json({ message: 'Select a customer to subscribe' });
+    }
+
     const sub = new Subscription({
       user: targetUserId,
       product,
       planType,
-      dailyQuantity,
+      dailyQuantity: Number(dailyQuantity) || 1,
       weeklyPlan,
-      pricePerUnit,
+      pricePerUnit: Number(pricePerUnit),
       nextDelivery: new Date(Date.now() + 24 * 60 * 60 * 1000)
     });
     await sub.save();
     res.status(201).json(sub);
   } catch (error) {
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ message: Object.values(error.errors).map(e => e.message).join('; ') });
+    }
+    if (error.name === 'CastError') {
+      return res.status(400).json({ message: 'Invalid product or user id' });
+    }
     res.status(500).json({ message: error.message });
   }
 });
 
-module.exports = router;
-
-
-// Pause subscription
+// Pause subscription (owner or admin)
 router.put('/:id/pause', auth, async (req, res) => {
   try {
     const sub = await Subscription.findOneAndUpdate(
-      { _id: req.params.id, user: req.user._id },
+      subAccessFilter(req),
       { status: 'paused' },
-      { new: true }
+      { new: true, runValidators: true }
     );
     if (!sub) return res.status(404).json({ message: 'Subscription not found' });
     res.json(sub);
   } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({ message: 'Invalid subscription id' });
+    }
     res.status(500).json({ message: error.message });
   }
 });
 
-// Resume subscription
+// Resume subscription (owner or admin)
 router.put('/:id/resume', auth, async (req, res) => {
   try {
     const sub = await Subscription.findOneAndUpdate(
-      { _id: req.params.id, user: req.user._id },
+      subAccessFilter(req),
       { status: 'active', nextDelivery: new Date(Date.now() + 24 * 60 * 60 * 1000) },
-      { new: true }
+      { new: true, runValidators: true }
     );
     if (!sub) return res.status(404).json({ message: 'Subscription not found' });
     res.json(sub);
   } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({ message: 'Invalid subscription id' });
+    }
     res.status(500).json({ message: error.message });
   }
 });
 
-// Cancel subscription
+// Cancel subscription (owner or admin)
 router.put('/:id/cancel', auth, async (req, res) => {
   try {
     const sub = await Subscription.findOneAndUpdate(
-      { _id: req.params.id, user: req.user._id },
-      { status: 'cancelled' },
-      { new: true }
+      subAccessFilter(req),
+      { status: 'cancelled', endDate: new Date() },
+      { new: true, runValidators: true }
     );
     if (!sub) return res.status(404).json({ message: 'Subscription not found' });
     res.json(sub);
   } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({ message: 'Invalid subscription id' });
+    }
     res.status(500).json({ message: error.message });
   }
 });

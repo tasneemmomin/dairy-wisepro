@@ -2,6 +2,7 @@ const express = require('express');
 const QRCode = require('qrcode');
 const Payment = require('../models/Payment');
 const Order = require('../models/Order');
+const Notification = require('../models/Notification');
 const { auth, authorizeRoles } = require('../middleware/auth');
 const WhatsAppService = require('../utils/whatsapp');
 const router = express.Router();
@@ -49,17 +50,21 @@ router.post('/generate-qr', auth, async (req, res) => {
     // Check if payment already exists
     let payment = await Payment.findOne({ order: orderId });
 
+    // Always price the QR against the order total on the server — a client-supplied
+    // amount is never trusted for payment.
+    const upiAmount = Number(order.totalAmount) || 0;
+
     if (!payment) {
       // Create payment record
       payment = new Payment({
         order: orderId,
         user: isAdmin ? order.user : req.user._id,
-        amount: amount,
+        amount: upiAmount,
         paymentMethod: 'qr_code'
       });
 
       // Generate UPI QR Code
-      const upiString = `upi://pay?pa=${UPI_ID}&pn=Vasantdada%20Agency&am=${amount}&tr=${orderId}`;
+      const upiString = `upi://pay?pa=${UPI_ID}&pn=Vasantdada%20Agency&am=${upiAmount}&cu=INR&tr=${orderId}`;
       const qrCodeImage = await QRCode.toDataURL(upiString);
 
       payment.qrCode = qrCodeImage;
@@ -130,8 +135,17 @@ router.get('/order/:orderId', auth, async (req, res) => {
       });
     }
 
+    // Customers can only view their own order's payment record
+    const isAdmin = req.user?.id === 'admin-fixed' || req.user?._id === 'admin-fixed';
+    if (!isAdmin && payment.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'You can only view your own payments' });
+    }
+
     res.json(payment);
   } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({ message: 'Invalid order id' });
+    }
     res.status(500).json({ message: error.message });
   }
 });
@@ -145,19 +159,37 @@ router.post('/order/:orderId/mark-paid', auth, async (req, res) => {
       return res.status(400).json({ message: 'UTR / Transaction ID is required.' });
     }
 
+    // ── Verify the order exists AND belongs to this user ───────────────────
+    // Without this, any authenticated user could attach payment proofs (and
+    // change the payment status) to someone else's order.
+    const targetOrder = await Order.findById(req.params.orderId);
+    if (!targetOrder) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    const isAdmin = req.user?.id === 'admin-fixed' || req.user?._id === 'admin-fixed';
+    if (!isAdmin && targetOrder.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'You can only pay for your own orders' });
+    }
+
+    if (targetOrder.paymentStatus !== 'pending') {
+      return res.status(400).json({
+        message: `This order's payment is already '${targetOrder.paymentStatus.replace('_', ' ')}'.`
+      });
+    }
+
     let payment = await Payment.findOne({ order: req.params.orderId });
     if (!payment) {
       // In case payment wasn't explicitly generated via QR API endpoint
       payment = new Payment({
         order: req.params.orderId,
         user: req.user._id,
-        amount: 0, // Gets populated later when Admin sees it if not captured
+        amount: targetOrder.totalAmount, // amount comes from the order — never client-controlled
         paymentMethod: 'qr_code'
       });
     }
 
-    // Verify user owns this payment (skip for admin)
-    const isAdmin = req.user?.id === 'admin-fixed' || req.user?._id === 'admin-fixed';
+    // Verify user owns this payment (isAdmin already verified above)
     if (!isAdmin && payment.user.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'You can only verify your own payments' });
     }
@@ -305,9 +337,29 @@ router.post('/:paymentId/reject', auth, authorizeRoles('OWNER', 'ADMIN'), async 
     order.paymentStatus = 'failed';
     await order.save();
 
+    // Return reserved stock to inventory — a failed payment means the goods
+    // never left the shop, so the stock decrement from order placement must
+    // be undone, otherwise inventory silently shrinks over time.
+    const Product = require('../models/Product');
+    for (const item of order.items) {
+      if (item.product && item.quantity) {
+        await Product.updateOne({ _id: item.product }, { $inc: { stock: item.quantity } });
+      }
+    }
+
     // Emit socket event
     const io = req.app.get('io');
     io?.to(order.user.toString()).emit('order_failed', { order, reason: rejectionReason });
+
+    // Notify customer their payment was rejected
+    const notif = await Notification.create({
+      type: 'general',
+      title: 'Payment Rejected',
+      message: `Payment for order #${order._id.toString().slice(-6)} was rejected. Reason: ${rejectionReason}`,
+      user: order.user,
+      data: { orderId: order._id }
+    });
+    io?.emit('notification', notif);
 
     res.json({
       message: 'Payment rejected successfully. Order cancelled.',

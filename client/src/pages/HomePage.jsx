@@ -12,12 +12,12 @@ const features = [
 ];
 
 const categories = [
-  { name: 'Cow Milk', img: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=200&h=200&fit=crop' },
-  { name: 'Buffalo Milk', img: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=200&h=200&fit=crop' },
-  { name: 'Paneer', img: 'https://images.unsplash.com/photo-1631452180519-c014fe946bc7?w=200&h=200&fit=crop' },
-  { name: 'Curd', img: 'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=200&h=200&fit=crop' },
-  { name: 'Butter', img: 'https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?w=200&h=200&fit=crop' },
-  { name: 'Ghee', img: 'https://images.unsplash.com/photo-1600398142498-f5610992b066?w=200&h=200&fit=crop' },
+  { name: 'Cow Milk', cat: 'milk', img: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=200&h=200&fit=crop' },
+  { name: 'Buffalo Milk', cat: 'milk', img: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=200&h=200&fit=crop' },
+  { name: 'Paneer', cat: 'paneer', img: 'https://images.unsplash.com/photo-1631452180519-c014fe946bc7?w=200&h=200&fit=crop' },
+  { name: 'Curd', cat: 'curd', img: 'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=200&h=200&fit=crop' },
+  { name: 'Butter', cat: 'butter', img: 'https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?w=200&h=200&fit=crop' },
+  { name: 'Ghee', cat: 'ghee', img: 'https://images.unsplash.com/photo-1600398142498-f5610992b066?w=200&h=200&fit=crop' },
 ];
 
 export default function HomePage() {
@@ -64,7 +64,7 @@ export default function HomePage() {
           {categories.map((cat, i) => (
             <motion.div key={cat.name} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}>
-              <Link to={`/shop?category=${cat.name.toLowerCase().split(' ')[0]}`}
+              <Link to={`/shop?category=${cat.cat}`}
                 className="bg-white rounded-2xl p-3 text-center shadow-lg hover:shadow-xl transition-all block border border-gray-100">
                 <div className="w-16 h-16 rounded-xl overflow-hidden mx-auto mb-2 bg-green-50">
                   <img src={cat.img} alt={cat.name} className="w-full h-full object-cover"

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Search, Filter, X } from 'lucide-react';
 import API from '../services/api';
@@ -13,12 +14,21 @@ const sortOptions = [
 ];
 
 export default function ShopPage() {
+  const [searchParams] = useSearchParams();
+  const urlCategory = searchParams.get('category');
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('all');
+  const [category, setCategory] = useState(
+    urlCategory && categories.includes(urlCategory) ? urlCategory : 'all'
+  );
   const [sort, setSort] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+
+  useEffect(() => {
+    // Re-apply when navigating with a new ?category= link
+    if (urlCategory && categories.includes(urlCategory)) setCategory(urlCategory);
+  }, [urlCategory]);
 
   useEffect(() => {
     fetchProducts();

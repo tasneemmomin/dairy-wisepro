@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import { useEffect } from 'react';
+import { Toaster, toast } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 import { SocketProvider } from './context/SocketContext';
@@ -39,14 +40,14 @@ function ProtectedRoute({ children }) {
 }
 
 function AdminRoute() {
-  const { user, loading, isAdmin } = useAuth();
+  const { user, loading, isAdmin, isDelivery } = useAuth();
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
     </div>
   );
   if (!user) return <Navigate to="/login" />;
-  if (!isAdmin) return <Navigate to="/shop" />;
+  if (!isAdmin && !isDelivery) return <Navigate to="/shop" />;
   return (
     <div className="flex min-h-screen bg-gray-50">
       <AdminSidebar />
@@ -64,6 +65,22 @@ function CustomerLayout() {
       <Outlet />
     </div>
   );
+}
+
+// Tells the user the moment they drop off / recover their internet
+function NetworkWatcher() {
+  useEffect(() => {
+    const onOffline = () => toast.error('You are offline — check your connection', { id: 'net-status', duration: 6000 });
+    const onOnline = () => toast.success('Back online!', { id: 'net-status', duration: 3000 });
+    if (!navigator.onLine) onOffline();
+    window.addEventListener('offline', onOffline);
+    window.addEventListener('online', onOnline);
+    return () => {
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', onOnline);
+    };
+  }, []);
+  return null;
 }
 
 function AppRoutes() {
@@ -109,6 +126,7 @@ export default function App() {
       <AuthProvider>
         <CartProvider>
           <SocketProvider>
+            <NetworkWatcher />
             <AppRoutes />
             <Toaster
               position="top-right"

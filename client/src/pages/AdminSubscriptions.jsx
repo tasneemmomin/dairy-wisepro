@@ -70,9 +70,9 @@ export default function AdminSubscriptions() {
                 ) : (
                   <div className="flex gap-1 flex-wrap">
                     <span className="font-medium">Weekly Schedule:</span>
-                    {sub.weeklyPlan?.map(day => (
-                      <span key={day.dayOfWeek} className="px-2 py-0.5 bg-gray-100 rounded text-xs">
-                        {day.dayOfWeek.slice(0, 3)}: {day.quantity}
+                    {sub.weeklyPlan?.filter(d => d.enabled).map(day => (
+                      <span key={day.day} className="px-2 py-0.5 bg-gray-100 rounded text-xs">
+                        {day.day?.slice(0, 3)}: {day.quantity}
                       </span>
                     ))}
                   </div>

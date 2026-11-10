@@ -2,10 +2,12 @@ import { jsPDF } from 'jspdf';
 
 /**
  * Generates and downloads a formatted Invoice PDF for a given order.
- * @param {Object} order - The order object from the API
- * @param {Object} user  - The logged-in user object
+ * @param {Object} order - The order (or bill-shaped) object from the API
+ * @param {Object} user  - The customer object (name/phone for "Bill To")
+ * @param {Object} opts  - { paid: boolean } — renders UNPAID invoice without watermark when false
  */
-export function downloadInvoicePDF(order, user) {
+export function downloadInvoicePDF(order, user, opts = {}) {
+  const isPaid = opts.paid !== undefined ? opts.paid : true;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
   const green = [34, 139, 34];
@@ -57,11 +59,14 @@ export function downloadInvoicePDF(order, user) {
   y += 7;
   doc.setFont('helvetica', 'bold');
   doc.text('Payment:', 14, y);
-  doc.setFont('helvetica', 'normal');
-  doc.text('PAID ✓', 42, y);
-  doc.setTextColor(...green);
   doc.setFont('helvetica', 'bold');
-  doc.text('● PAID', 44, y);
+  if (isPaid) {
+    doc.setTextColor(...green);
+    doc.text('● PAID', 42, y);
+  } else {
+    doc.setTextColor(220, 38, 38);
+    doc.text('○ UNPAID', 42, y);
+  }
   doc.setTextColor(...dark);
   doc.setFont('helvetica', 'normal');
 
@@ -167,11 +172,13 @@ export function downloadInvoicePDF(order, user) {
   y += 5;
   doc.text('For queries, WhatsApp: 8766997752 | UPI: 9975882125@okbizaxis', pageW / 2, y, { align: 'center' });
 
-  // ── Watermark (paid) ─────────────────────────────────────────────
-  doc.setTextColor(34, 139, 34, 0.08);
-  doc.setFontSize(72);
-  doc.setFont('helvetica', 'bold');
-  doc.text('PAID', pageW / 2, 160, { align: 'center', angle: 45 });
+  // ── Watermark (paid only) ─────────────────────────────────────────
+  if (isPaid) {
+    doc.setTextColor(34, 139, 34, 0.08);
+    doc.setFontSize(72);
+    doc.setFont('helvetica', 'bold');
+    doc.text('PAID', pageW / 2, 160, { align: 'center', angle: 45 });
+  }
 
   // ── Save ─────────────────────────────────────────────────────────
   const filename = `Invoice_${order._id?.slice(-8).toUpperCase()}_VasantDairy.pdf`;

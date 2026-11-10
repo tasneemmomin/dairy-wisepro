@@ -31,10 +31,17 @@ router.get('/unread', auth, async (req, res) => {
   }
 });
 
-// Mark as read
+// Mark as read — users can only mark their own / global notifications
 router.put('/:id/read', auth, async (req, res) => {
   try {
-    await Notification.findByIdAndUpdate(req.params.id, { isRead: true });
+    const isAdmin = ['OWNER', 'ADMIN', 'STAFF'].includes(req.user.role);
+    const filter = isAdmin
+      ? { _id: req.params.id }
+      : { _id: req.params.id, $or: [{ user: req.user._id }, { user: null }] };
+    const result = await Notification.updateOne(filter, { isRead: true });
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ message: 'Notification not found' });
+    }
     res.json({ message: 'Marked as read' });
   } catch (error) {
     res.status(500).json({ message: error.message });

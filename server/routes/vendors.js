@@ -27,10 +27,16 @@ router.post('/', auth, authorizeRoles('OWNER', 'ADMIN', 'STAFF'), async (req, re
 // Update vendor
 router.put('/:id', auth, authorizeRoles('OWNER', 'ADMIN', 'STAFF'), async (req, res) => {
   try {
-    const vendor = await Vendor.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const vendor = await Vendor.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
     res.json(vendor);
   } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({ message: 'Invalid vendor id' });
+    }
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ message: Object.values(error.errors).map(e => e.message).join('; ') });
+    }
     res.status(500).json({ message: error.message });
   }
 });
@@ -38,9 +44,13 @@ router.put('/:id', auth, authorizeRoles('OWNER', 'ADMIN', 'STAFF'), async (req, 
 // Delete vendor
 router.delete('/:id', auth, authorizeRoles('OWNER', 'ADMIN', 'STAFF'), async (req, res) => {
   try {
-    await Vendor.findByIdAndDelete(req.params.id);
+    const vendor = await Vendor.findByIdAndDelete(req.params.id);
+    if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
     res.json({ message: 'Vendor deleted' });
   } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({ message: 'Invalid vendor id' });
+    }
     res.status(500).json({ message: error.message });
   }
 });

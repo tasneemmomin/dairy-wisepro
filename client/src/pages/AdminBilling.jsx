@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { FileText, Download, CheckCircle, AlertCircle, Search, Filter } from 'lucide-react';
 import API from '../services/api';
+import { downloadInvoicePDF } from '../services/invoiceService';
 import toast from 'react-hot-toast';
 
 export default function AdminBilling() {
@@ -49,6 +50,23 @@ export default function AdminBilling() {
     }
   };
 
+  // Convert a monthly Bill into the shape the invoice generator expects
+  const handleDownloadBill = (bill) => {
+    const pseudoOrder = {
+      _id: bill._id,
+      createdAt: bill.createdAt || new Date(bill.year, bill.month - 1, 1).toISOString(),
+      paymentMethod: 'qr_code',
+      deliveryAddress: bill.customer?.address || {},
+      items: (bill.items || []).map(it => ({
+        name: it.productName || 'Delivery',
+        price: it.price || (it.quantity ? +(it.subtotal / it.quantity).toFixed(2) : it.subtotal),
+        quantity: it.quantity || 1
+      })),
+      totalAmount: bill.totalAmount
+    };
+    downloadInvoicePDF(pseudoOrder, bill.customer || {}, { paid: bill.status === 'Paid' });
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
@@ -83,9 +101,12 @@ export default function AdminBilling() {
               onChange={(e) => setFilterYear(e.target.value)}
               className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-green-500"
             >
-              {[2024, 2025, 2026].map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
+              {(() => {
+                const thisYear = new Date().getFullYear();
+                const years = [];
+                for (let y = 2024; y <= thisYear + 1; y++) years.push(y);
+                return years.map(y => <option key={y} value={y}>{y}</option>);
+              })()}
             </select>
           </div>
           <div className="relative">
@@ -144,7 +165,7 @@ export default function AdminBilling() {
                            <CheckCircle size={18} />
                          </button>
                        )}
-                       <button className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Download Invoice">
+                       <button onClick={() => handleDownloadBill(bill)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Download Invoice">
                          <Download size={18} />
                        </button>
                     </div>

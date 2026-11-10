@@ -26,10 +26,21 @@ export function SocketProvider({ children }) {
 
     const newSocket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
-      withCredentials: true
+      withCredentials: true,
+      // Survive network drops / laptop sleep / server restarts
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000
     });
 
     newSocket.on('connect', () => {
+      if (user?._id || user?.id) newSocket.emit('join', user._id || user.id);
+    });
+
+    newSocket.on('reconnect', () => {
+      // Re-join the personal room after a drop so live notifications resume
       if (user?._id || user?.id) newSocket.emit('join', user._id || user.id);
     });
 

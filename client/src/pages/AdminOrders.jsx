@@ -4,7 +4,7 @@ import { Package, Clock, CheckCircle, Truck, XCircle, DollarSign, AlertCircle } 
 import API from '../services/api';
 import toast from 'react-hot-toast';
 
-const statuses = ['all', 'pending', 'confirmed', 'processing', 'out_for_delivery', 'delivered', 'cancelled'];
+const statuses = ['all', 'pending', 'confirmed', 'processing', 'out_for_delivery', 'delivered', 'cancelled', 'failed'];
 const statusColors = {
   pending: 'bg-yellow-100 text-yellow-700',
   confirmed: 'bg-blue-100 text-blue-700',
@@ -12,6 +12,7 @@ const statusColors = {
   out_for_delivery: 'bg-purple-100 text-purple-700',
   delivered: 'bg-green-100 text-green-700',
   cancelled: 'bg-red-100 text-red-700',
+  failed: 'bg-red-100 text-red-700',
 };
 
 const paymentStatusColors = {

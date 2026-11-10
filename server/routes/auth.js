@@ -6,18 +6,32 @@ const { auth, authorizeRoles } = require('../middleware/auth');
 const router = express.Router();
 
 // ─── Fixed Admin Credentials (from env vars with hardcoded fallback) ────────
-const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const ADMIN_EMAIL    = (process.env.ADMIN_EMAIL || 'vasantdadaagency816@gmail.com').toLowerCase();
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'vasantdada123';
 const ADMIN_NAME     = process.env.ADMIN_NAME || 'Kedar Patil';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 // ─── 1. Register (Signup) ─────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    let { name, email, password } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Name, email and password are required.' });
     }
-    if (password.length < 6) {
+    name = String(name).trim();
+    if (name.length < 2) {
+      return res.status(400).json({ message: 'Name must be at least 2 characters.' });
+    }
+    email = String(email).trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) {
+      return res.status(400).json({ message: 'Please enter a valid email address.' });
+    }
+    if (email === ADMIN_EMAIL) {
+      return res.status(400).json({ message: 'This email is reserved. Please login as agency owner.' });
+    }
+    if (String(password).length < 6) {
       return res.status(400).json({ message: 'Password must be at least 6 characters.' });
     }
 
@@ -46,6 +60,12 @@ router.post('/register', async (req, res) => {
     });
   } catch (error) {
     console.error('Register error:', error);
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'Email already registered. Please login.' });
+    }
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ message: Object.values(error.errors).map(e => e.message).join('; ') });
+    }
     res.status(500).json({ message: error.message });
   }
 });
@@ -60,7 +80,7 @@ router.post('/login', async (req, res) => {
     }
 
     // ── Fixed Admin Account ──────────────────────────────────────────────
-    if (email.trim().toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+    if (ADMIN_PASSWORD && email.trim().toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
       const adminToken = jwt.sign(
         { id: 'admin-fixed', email: ADMIN_EMAIL, role: 'OWNER' },
         process.env.JWT_SECRET,
@@ -152,8 +172,22 @@ router.put('/profile', auth, async (req, res) => {
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    if (name) user.name = name;
-    if (email) user.email = email;
+    if (name) {
+      if (String(name).trim().length < 2) {
+        return res.status(400).json({ message: 'Name must be at least 2 characters.' });
+      }
+      user.name = String(name).trim();
+    }
+    if (email) {
+      const newEmail = String(email).trim().toLowerCase();
+      if (newEmail !== user.email) {
+        const taken = await User.findOne({ email: newEmail, _id: { $ne: user._id } });
+        if (taken) {
+          return res.status(400).json({ message: 'That email is already in use by another account.' });
+        }
+        user.email = newEmail;
+      }
+    }
     if (address) user.address = { ...user.address, ...address };
 
     await user.save();
@@ -169,6 +203,12 @@ router.put('/profile', auth, async (req, res) => {
       }
     });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'That email is already in use by another account.' });
+    }
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ message: Object.values(error.errors).map(e => e.message).join('; ') });
+    }
     res.status(500).json({ message: error.message });
   }
 });

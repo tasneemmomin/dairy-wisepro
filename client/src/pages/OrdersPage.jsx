@@ -13,11 +13,12 @@ const statusColors = {
   out_for_delivery: 'bg-purple-100 text-purple-700',
   delivered:        'bg-green-100 text-green-700',
   cancelled:        'bg-red-100 text-red-700',
+  failed:           'bg-red-100 text-red-700',
 };
 
 const statusIcons = {
   pending: Clock, confirmed: Package, processing: Package,
-  out_for_delivery: Truck, delivered: CheckCircle, cancelled: XCircle,
+  out_for_delivery: Truck, delivered: CheckCircle, cancelled: XCircle, failed: XCircle,
 };
 
 export default function OrdersPage() {
@@ -136,8 +137,27 @@ export default function OrdersPage() {
                   </div>
 
                   {/* Action buttons */}
-                  {order.status !== 'cancelled' && (
+                  {order.status !== 'cancelled' && order.status !== 'failed' && (
                     <div className="flex gap-2 mt-3">
+                      {/* Cancel — only while still pending (before agency confirmation) */}
+                      {order.status === 'pending' && (
+                        <button
+                          onClick={async () => {
+                            if (!window.confirm('Cancel this order? Reserved stock will be returned to the shop.')) return;
+                            try {
+                              await API.put(`/orders/${order._id}/cancel`);
+                              toast.success('Order cancelled');
+                              fetchOrders();
+                            } catch (err) {
+                              toast.error(err.response?.data?.message || 'Failed to cancel order');
+                            }
+                          }}
+                          className="py-2.5 px-4 bg-white border border-red-200 text-red-600 text-sm font-semibold rounded-xl hover:bg-red-50 transition flex items-center justify-center gap-2">
+                          <XCircle size={15} />
+                          Cancel
+                        </button>
+                      )}
+
                       {/* Pay Now — only if unpaid and not cancelled */}
                       {!isPaid && (
                         <button

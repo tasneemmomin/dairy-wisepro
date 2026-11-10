@@ -1,8 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ShieldCheck, CheckCircle, Loader, Upload, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import API from '../services/api';
+
+const FALLBACK = { upiId: '9975882125@okbizaxis', whatsappNumber: '918766997752' };
 
 /**
  * PayNowModal - Handles UPI QR payment + captures UTR proof
@@ -13,8 +15,18 @@ export default function PayNowModal({ isOpen, onClose, order, user, onPaymentSuc
   const [utr, setUtr] = useState('');
   const [referenceNumber, setReferenceNumber] = useState('');
   const [screenshotBase64, setScreenshotBase64] = useState(null);
+  const [config, setConfig] = useState(FALLBACK);
   
   const fileInputRef = useRef(null);
+
+  // Read outlet details (UPI ID / WhatsApp) from the server config so the owner
+  // can change them centrally without a frontend redeploy
+  useEffect(() => {
+    if (!isOpen) return;
+    API.get('/config').then(res => {
+      if (res.data?.upiId) setConfig(res.data);
+    }).catch(() => {});
+  }, [isOpen]);
 
   if (!isOpen || !order) return null;
 
@@ -24,7 +36,7 @@ export default function PayNowModal({ isOpen, onClose, order, user, onPaymentSuc
   const whatsappMsg = encodeURIComponent(
     `Hello Vasantdada Agency!\n\nI have paid for my order.\n\nOrder ID: #${orderId}\nAmount: ₹${amount}\nCustomer: ${user?.name || 'Customer'}\nPhone: ${user?.phone || 'N/A'}\n\nPlease confirm my payment. 🙏`
   );
-  const whatsappUrl = `https://wa.me/918766997752?text=${whatsappMsg}`;
+  const whatsappUrl = `https://wa.me/${config.whatsappNumber}?text=${whatsappMsg}`;
 
   // Convert image to base64
   const handleFileChange = (e) => {
@@ -120,7 +132,7 @@ export default function PayNowModal({ isOpen, onClose, order, user, onPaymentSuc
 
               <div className="text-center">
                 <p className="text-xs text-gray-500">UPI ID</p>
-                <p className="font-mono text-sm font-semibold bg-gray-100 px-3 py-1.5 rounded-lg inline-block mt-1">9975882125@okbizaxis</p>
+                <p className="font-mono text-sm font-semibold bg-gray-100 px-3 py-1.5 rounded-lg inline-block mt-1">{config.upiId}</p>
               </div>
 
               <div className="flex items-center gap-3">
