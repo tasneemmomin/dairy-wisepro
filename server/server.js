@@ -227,41 +227,87 @@ function isDnsError(err) {
 }
 
 let assertedServer = false;
-async function startMongoAndServer() {
-  // 1) Primary URI (Atlas or local) with default system DNS
+let dbBootstrapped = false;
+
+// Run migrations + seed once a DB connection exists (idempotent)
+async function bootstrapDb() {
+  if (dbBootstrapped || mongoose.connection.readyState !== 1) return;
+  await runMigrations(mongoose.connection.db);
+  await seedDatabase();
+  dbBootstrapped = true;
+}
+
+// Full connection chain: primary URI -> public-DNS retry -> local fallback.
+// Returns true if connected, false otherwise (never throws past the caller).
+async function connectMongoChain() {
+  if (mongoose.connection.readyState === 1) return true;
   try {
     await tryConnect(MONGODB_URI);
+    return true;
   } catch (err) {
     const dnsRelated = isDnsError(err);
     console.warn(`MongoDB primary connection failed: ${err.message}`);
 
-    // 2) DNS problem? Retry the SAME URI via public resolvers
+    // DNS problem? Retry the SAME URI via public resolvers
     if (dnsRelated && !isLocalUri(MONGODB_URI)) {
       console.warn('Retrying DNS resolution via public resolvers (8.8.8.8 / 1.1.1.1)...');
       try {
         await tryWithPublicDns(MONGODB_URI);
+        return true;
       } catch (err2) {
         console.warn(`Public-DNS retry failed: ${err2.message}`);
       }
     }
 
-    // 3) Still down? Fall back to a local MongoDB if the primary isn't local
-    if (mongoose.connection.readyState !== 1 && !isLocalUri(MONGODB_URI)) {
+    // Still down? Fall back to a local MongoDB if the primary isn't local
+    if (!isLocalUri(MONGODB_URI)) {
       console.warn('Falling back to local MongoDB (data will be local-only until the cloud URI is reachable)...');
-      await tryConnect(LOCAL_MONGODB_FALLBACK);
+      try {
+        await tryConnect(LOCAL_MONGODB_FALLBACK);
+        return true;
+      } catch (err3) {
+        console.warn(`Local fallback failed: ${err3.message}`);
+      }
     }
-
-    if (mongoose.connection.readyState !== 1) throw err;
+    return false;
   }
+}
 
-  console.log('MongoDB connected');
-  await runMigrations(mongoose.connection.db);
-  await seedDatabase();
+async function startMongoAndServer() {
+  // 1) Start the HTTP server FIRST so deploys and health checks succeed
+  //    even while the database is still unreachable.
+  server.on('error', (e) => {
+    console.error('Server listen error:', e.message);
+    process.exit(1);
+  });
   server.listen(PORT, () => {
     assertedServer = true;
     console.log(`\n  DairyOS Pro Server running on http://localhost:${PORT}`);
     console.log('  ==========================================\n');
   });
+
+  // 2) Connect to MongoDB. If it fails now, keep retrying in the background
+  //    — never crash-loop the whole service (Render free tier wakes services
+  //    on request; a hard exit here would make the API permanently unreachable).
+  const connected = await connectMongoChain();
+  if (connected) {
+    console.log('MongoDB connected');
+    await bootstrapDb();
+    return;
+  }
+
+  console.warn('⚠ Started WITHOUT MongoDB — retrying every 30s in the background...');
+  const retryTimer = setInterval(async () => {
+    try {
+      if (await connectMongoChain()) {
+        clearInterval(retryTimer);
+        console.log('✓ MongoDB connected (delayed startup)');
+        await bootstrapDb();
+      }
+    } catch (err) {
+      console.warn(`MongoDB retry failed: ${err.message}`);
+    }
+  }, 30000);
 }
 
 // Visibility into mid-session network loss / recovery (mongoose auto-reconnects)
@@ -273,11 +319,7 @@ mongoose.connection.on('reconnected', () => {
 });
 
 startMongoAndServer().catch((err) => {
-  console.error('MongoDB connection error:', err.message);
-  console.log('\n  No reachable MongoDB found (cloud URI AND local fallback).');
-  console.log('  Options:');
-  console.log('   1. Check your internet/network and restart.');
-  console.log('   2. Start a local MongoDB: https://www.mongodb.com/try/download/community');
-  console.log('   3. Set MONGODB_LOCAL_FALLBACK in server/.env to a working local URI.\n');
-  process.exit(1);
+  // Do NOT process.exit() — the HTTP server is already listening and the
+  // DB retry loop keeps the service recoverable.
+  console.error('Startup error:', err.message);
 });
