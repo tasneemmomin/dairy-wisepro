@@ -1,10 +1,13 @@
 import axios from 'axios';
 
-// Use environment variable or default to localhost
+// Use environment variable or default to localhost.
+// Tolerates dashboard values missing the /api suffix (e.g. root Render URL):
+// the Express API is always mounted under /api, so append it if absent.
 const getBaseURL = () => {
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl) return envUrl;
-  return 'http://localhost:5000/api';
+  let url = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  url = url.replace(/\/+$/, '');
+  if (!url.endsWith('/api')) url = `${url}/api`;
+  return url;
 };
 
 const API = axios.create({
